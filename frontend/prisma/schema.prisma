@@ -1,0 +1,231 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// Auth.js Standard Models
+// ==========================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  phone         String?   @unique
+  role          String    @default("farmer") // "farmer", "veterinarian", "admin"
+  vetRegion     String?   // Assigned region/jurisdiction for veterinarian (e.g. Visakhapatnam North, etc.)
+  accounts      Account[]
+  sessions      Session[]
+
+  // Relations to PashuRaksha domain models
+  farmerProfile  Farmer?
+  vetProfile     Veterinarian?
+  govProfile     GovernmentOfficial?
+  vetAssessments VeterinaryAssessment[]
+  assignedCases  HealthCase[] @relation("VetAssignments")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==========================================
+// PashuRaksha Operational Models
+// ==========================================
+
+model Farmer {
+  id       String  @id @default(cuid())
+  farmerId String  @unique // Platform-generated Farmer ID (e.g., FRM-XXXXX)
+  userId   String  @unique
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  phone    String?
+  address  String?
+  district String?
+  state    String?
+
+  // Approximate livestock profiles
+  livestock LivestockProfile[]
+
+  // Associated health cases
+  healthCases HealthCase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Veterinarian {
+  id        String   @id @default(cuid())
+  vetId     String   @unique // Platform-generated Vet ID (e.g., VET-XXXXX)
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  email     String   @unique
+  phone     String?
+  vetRegion String   // e.g. "Visakhapatnam North", etc.
+  radiusKm  Int      @default(30)
+  clinicLat Float?
+  clinicLng Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GovernmentOfficial {
+  id         String   @id @default(cuid())
+  govId      String   @unique // Platform-generated Gov ID (e.g., GOV-XXXXX)
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  email      String   @unique
+  department String   @default("Department of Animal Husbandry")
+  clearance  String   @default("LEVEL_1") // LEVEL_1, LEVEL_2, etc.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LivestockProfile {
+  id          String   @id @default(cuid())
+  farmerId    String
+  farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  species     String // e.g., "Cattle", "Buffalo", "Sheep", "Goat", "Poultry"
+  approxCount Int // Approximate counts, NOT individual animals
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([farmerId, species]) // Unique entry per species for a farmer
+}
+
+model HealthCase {
+  id               String    @id @default(cuid())
+  caseId           String    @unique // Unique Case ID (e.g., CAS-XXXXX)
+  farmerId         String
+  farmer           Farmer    @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  status           String    @default("PENDING") // PENDING, AI_ANALYZED, VET_ASSIGNED, VET_ASSESSED, RESOLVED
+  symptoms         String    @db.Text // Description of symptoms
+  symptomStartDate DateTime?
+  location         String? // Location description or coordinates
+  images           String[] // Array of image storage URLs/paths
+  audio            String? // Optional audio URL for sound recordings (e.g. coughing)
+  species          String    @default("Cattle") // Affected species
+  affectedCount    Int       @default(1) // Number of sick/affected headcount
+  assignedVetId    String?
+  assignedVet      User?     @relation("VetAssignments", fields: [assignedVetId], references: [id])
+
+  // Associations
+  aiAnalysis     AIAnalysis?
+  vetAssessments VeterinaryAssessment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AIAnalysis {
+  id                String     @id @default(cuid())
+  healthCaseId      String     @unique
+  healthCase        HealthCase @relation(fields: [healthCaseId], references: [id], onDelete: Cascade)
+  predictedDiseases Json // JSON structure of predicted diseases: e.g., [{ disease: "FMD", confidence: 0.85 }]
+  isPreliminaryOnly Boolean    @default(true) // Constraint: AI can NEVER confirm a disease
+  disclaimer        String     @default("Preliminary decision support only. Not a confirmed veterinary diagnosis.")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VeterinaryAssessment {
+  id            String     @id @default(cuid())
+  healthCaseId  String
+  healthCase    HealthCase @relation(fields: [healthCaseId], references: [id], onDelete: Cascade)
+  vetUserId     String
+  vetUser       User       @relation(fields: [vetUserId], references: [id], onDelete: Cascade)
+  diagnosis     String // Official confirmed diagnosis
+  severity      String // LOW, MEDIUM, HIGH, CRITICAL
+  treatmentPlan String     @db.Text
+  notes         String?    @db.Text
+
+  assessedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ==========================================
+// PashuRaksha Reference / Auxiliary Models
+// ==========================================
+
+model ReferenceCensusData {
+  id      String  @id @default(cuid())
+  region  String // e.g., district/state name
+  species String // e.g., "Cattle"
+  count   Int // Official livestock census counts
+  year    Int // Census year
+  source  String? // Reference source (e.g., "20th Livestock Census")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([region, species, year])
+}
+
+model VaccineInventory {
+  id            String    @id @default(cuid())
+  vaccineName   String    @unique // Vaccine-specific inventory
+  manufacturer  String?
+  batchNumber   String?
+  quantityCount Int       @default(0) // Total doses available
+  reservedCount Int       @default(0) // Doses reserved
+  expiryDate    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OtpVerification {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
