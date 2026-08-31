@@ -145,4 +145,76 @@ router.get("/:id/ai-analysis", requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
+/**
+ * DELETE /api/cases/:id
+ * Deletes a health case, validating ownership for farmers.
+ */
+router.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const targetCase = await db.healthCase.findUnique({
+      where: { id },
+      include: { farmer: true },
+    });
+
+    if (!targetCase) {
+      return res.status(404).json({ error: "Case not found." });
+    }
+
+    // Farmer ownership check: farmers can only delete their own cases
+    if (req.user!.role === "farmer" && targetCase.farmer.userId !== req.user!.id) {
+      return res.status(403).json({ error: "Forbidden. Access is restricted to case owners." });
+    }
+
+    // Delete the case (AIAnalysis and VeterinaryAssessment will cascade delete)
+    await db.healthCase.delete({
+      where: { id },
+    });
+
+    return res.status(200).json({
+      message: "Health case deleted successfully.",
+    });
+  } catch (error: unknown) {
+    console.error("DELETE case error:", error);
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    return res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * PATCH /api/cases/:id/resolve
+ * Marks a health case as RESOLVED upon completion of treatment and animal recovery.
+ */
+router.patch("/:id/resolve", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const targetCase = await db.healthCase.findUnique({
+      where: { id },
+      include: { farmer: true },
+    });
+
+    if (!targetCase) {
+      return res.status(404).json({ error: "Case not found." });
+    }
+
+    if (req.user!.role === "farmer" && targetCase.farmer.userId !== req.user!.id) {
+      return res.status(403).json({ error: "Forbidden. Access is restricted to case owners." });
+    }
+
+    const updated = await db.healthCase.update({
+      where: { id },
+      data: { status: "RESOLVED" },
+    });
+
+    return res.status(200).json({
+      message: "Case marked as RESOLVED & Recovered successfully.",
+      case: updated,
+    });
+  } catch (error: unknown) {
+    console.error("PATCH resolve case error:", error);
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    return res.status(500).json({ error: msg });
+  }
+});
+
 export default router;

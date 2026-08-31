@@ -82,24 +82,42 @@ export async function createHealthCase(userId: string, data: CreateCaseInput) {
   const locationText = data.location || farmer.address || farmer.district || "Visakhapatnam North";
   const assignedVetId = await resolveVetForLocation(locationText);
 
-  return db.healthCase.create({
-    data: {
-      caseId,
-      farmerId: farmer.id,
-      symptoms: data.symptoms,
-      symptomStartDate: data.symptomStartDate || new Date(),
-      location: locationText,
-      images: data.images,
-      audio: data.audio || null,
-      species: data.species,
-      affectedCount: data.affectedCount,
-      status: assignedVetId ? "VET_ASSIGNED" : "PENDING",
-      assignedVetId,
-    },
-    include: {
-      farmer: true,
-    },
-  });
+  const createData: any = {
+    caseId,
+    farmerId: farmer.id,
+    symptoms: data.symptoms,
+    symptomStartDate: data.symptomStartDate || new Date(),
+    location: locationText,
+    images: data.images || [],
+    species: data.species || "Cattle",
+    affectedCount: typeof data.affectedCount === "number" ? data.affectedCount : 1,
+    status: assignedVetId ? "VET_ASSIGNED" : "PENDING",
+    assignedVetId,
+  };
+
+  if (data.audio) {
+    createData.audio = data.audio;
+  }
+
+  try {
+    return await db.healthCase.create({
+      data: createData,
+      include: {
+        farmer: true,
+      },
+    });
+  } catch (err: any) {
+    if (createData.audio && err?.message?.includes("audio")) {
+      delete createData.audio;
+      return await db.healthCase.create({
+        data: createData,
+        include: {
+          farmer: true,
+        },
+      });
+    }
+    throw err;
+  }
 }
 
 /**

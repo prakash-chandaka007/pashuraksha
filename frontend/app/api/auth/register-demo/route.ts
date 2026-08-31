@@ -55,8 +55,13 @@ const REGIONAL_VETS = [
   },
 ];
 
+import { ensureDatabaseEmailsCorrect } from "@/lib/services/vet-db-fix";
+
 export async function POST(request: Request) {
   try {
+    // Repair vet emails before registration runs
+    await ensureDatabaseEmailsCorrect();
+
     const { role, vetEmail } = await request.json();
 
     if (!role || !["farmer", "vet", "gov"].includes(role)) {
@@ -113,6 +118,16 @@ export async function POST(request: Request) {
             },
           });
           console.log(`🩺 Seeded separate Veterinarian profile: ${v.name}`);
+        } else {
+          // Keep Veterinarian profile in sync with correct email and region
+          await db.veterinarian.update({
+            where: { id: vetProfile.id },
+            data: {
+              name: v.name,
+              email: v.email,
+              vetRegion: v.vetRegion,
+            },
+          });
         }
       }
 

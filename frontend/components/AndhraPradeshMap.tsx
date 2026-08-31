@@ -285,11 +285,13 @@ export default function AndhraPradeshMap({
 
   const triggerCallback = (reg: ClinicName, addr: string, land: string) => {
     const fullAddress = `${addr}${land ? ` (Near ${land})` : ""}, ${reg}`;
-    onLocationSelected({
-      region: reg,
-      address: fullAddress,
-      landmark: land,
-    });
+    if (onLocationSelected) {
+      onLocationSelected({
+        region: reg,
+        address: fullAddress,
+        landmark: land,
+      });
+    }
   };
 
   const handleAutoDetect = () => {

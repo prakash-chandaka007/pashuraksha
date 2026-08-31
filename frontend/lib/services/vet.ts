@@ -21,8 +21,18 @@ async function verifyVetRole(userId: string) {
 export async function getCasesQueueForVet(vetUserId: string) {
   await verifyVetRole(vetUserId);
 
+  const vetUser = await db.user.findUnique({
+    where: { id: vetUserId },
+  });
+
+  const vetRegion = vetUser?.vetRegion || "";
+
   return db.healthCase.findMany({
     where: {
+      OR: [
+        { assignedVetId: vetUserId },
+        ...(vetRegion ? [{ location: { contains: vetRegion, mode: "insensitive" as const } }] : []),
+      ],
       status: {
         in: ["AI_ANALYZED", "VET_ASSIGNED", "VET_ASSESSED"],
       },
@@ -53,18 +63,36 @@ export async function createVeterinaryAssessment(vetUserId: string, data: Create
     throw new Error("Referenced health case not found.");
   }
 
-  // Create assessment and update case status atomically in a transaction
+  // Create or update assessment and set case status to VET_ASSESSED atomically
   return db.$transaction(async (tx) => {
-    const assessment = await tx.veterinaryAssessment.create({
-      data: {
-        healthCaseId: data.healthCaseId,
-        vetUserId,
-        diagnosis: data.diagnosis,
-        severity: data.severity,
-        treatmentPlan: data.treatmentPlan,
-        notes: data.notes,
-      },
+    const existing = await tx.veterinaryAssessment.findFirst({
+      where: { healthCaseId: data.healthCaseId },
     });
+
+    let assessment;
+    if (existing) {
+      assessment = await tx.veterinaryAssessment.update({
+        where: { id: existing.id },
+        data: {
+          vetUserId,
+          diagnosis: data.diagnosis,
+          severity: data.severity,
+          treatmentPlan: data.treatmentPlan,
+          notes: data.notes,
+        },
+      });
+    } else {
+      assessment = await tx.veterinaryAssessment.create({
+        data: {
+          healthCaseId: data.healthCaseId,
+          vetUserId,
+          diagnosis: data.diagnosis,
+          severity: data.severity,
+          treatmentPlan: data.treatmentPlan,
+          notes: data.notes,
+        },
+      });
+    }
 
     await tx.healthCase.update({
       where: { id: data.healthCaseId },

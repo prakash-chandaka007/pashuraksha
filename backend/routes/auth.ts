@@ -5,18 +5,30 @@ import { z } from "zod";
 import { sendRegisterOtpSms } from "../lib/services/sms";
 
 const router = Router();
-// Zod validations for registration inputs
+// Zod validations for registration/login inputs
 const sendOtpSchema = z.object({
-  phone: z.string().min(3, "Identifier must be at least 3 characters long"),
+  phone: z.string().optional(),
+  identifier: z.string().optional(),
   name: z.string().optional(),
+}).transform((data) => ({
+  phone: (data.phone || data.identifier || "").trim(),
+  name: data.name,
+})).refine((data) => data.phone.length >= 3, {
+  message: "Valid Mobile number or Farmer ID is required",
 });
 
 const verifyOtpSchema = z.object({
-  phone: z.string().min(3, "Identifier must be at least 3 characters long"),
+  phone: z.string().optional(),
+  identifier: z.string().optional(),
   name: z.string().optional(),
   code: z.string().length(6, "OTP must be exactly 6 digits long"),
   password: z.string().min(6, "Password must be at least 6 characters long").optional().or(z.literal("")),
-});
+}).transform((data) => ({
+  phone: (data.phone || data.identifier || "").trim(),
+  name: data.name,
+  code: data.code,
+  password: data.password,
+}));
 
 /**
  * POST /api/auth/otp/send

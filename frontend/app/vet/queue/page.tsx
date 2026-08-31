@@ -32,6 +32,8 @@ export default async function VetQueuePage() {
     where: { id: session.user.id },
   });
   const vetRegion = vetUser?.vetRegion || "General Jurisdiction";
+  const vetName = vetUser?.name || session.user.name || "Doctor";
+  const vetEmail = vetUser?.email || session.user.email || "";
 
   // Safely serialize database model dates and relations for client component
   const cases = rawCases.map((c) => ({
@@ -70,7 +72,13 @@ export default async function VetQueuePage() {
 
   return (
     <main className="flex-1 bg-slate-50/50 py-10">
-      <QueueDashboard vetUserId={session.user.id} vetRegion={vetRegion} initialCases={cases} />
+      <QueueDashboard
+        vetUserId={session.user.id}
+        vetRegion={vetRegion}
+        vetName={vetName}
+        vetEmail={vetEmail}
+        initialCases={cases}
+      />
     </main>
   );
 }
